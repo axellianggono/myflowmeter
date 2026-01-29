@@ -12,4 +12,11 @@ implemented in practice using Python and PyShark.
 Quick Start
 -----------
 * Capture a pcap file
-* 
+* Run 
+```bash
+python main.py --source example.pcap --output example.log
+```
+
+References
+----------
+https://www.unb.ca/cic/research/applications.html
