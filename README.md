@@ -12,9 +12,17 @@ implemented in practice using Python and PyShark.
 Quick Start
 -----------
 * Capture a pcap file
-* Run 
+* Run offline extraction
 ```bash
-python main.py --source example.pcap --output example.log
+python main.py --source example.pcap --output example.log --label normal
+```
+* Run online extraction
+```bash
+python main.py --interface eth0 --output example.log --label normal
+```
+* Getting help
+```bash
+python main.py --help
 ```
 
 Generated Features
