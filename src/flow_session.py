@@ -1,9 +1,10 @@
 from src.flow import Flow
 
 class FlowSession:
-    def __init__(self, idle_timeout, active_timeout):
+    def __init__(self, idle_timeout, active_timeout, label):
         self.idle_timeout = idle_timeout
         self.active_timeout = active_timeout
+        self.label = label
 
         self.active_flow = []
         self.inactive_flow = []
@@ -34,7 +35,7 @@ class FlowSession:
         if flow:
             flow.update_flow(packet)
         else:
-            new_flow = Flow(packet)
+            new_flow = Flow(packet, self.active_timeout, self.idle_timeout, self.label)
             self.active_flow.append(new_flow)
 
     def _close_all_flow(self):

@@ -2,10 +2,24 @@ from src.packet_size import PacketSize
 from src.iat import IAT
 from src.flag import Flag
 from src.header import Header
+from src.bulk import Bulk
+from src.subflow import Subflow
+from src.window import Window
+from src.active import Active
+from src.idle import Idle
 
 class Flow:
-    def __init__(self, packet):
+    def __init__(self, packet, active_timout, idle_timeout, label):
         self.packets = [(packet, "FWD")]
+
+        self._all_packets = self._get_all_packets()
+        self._fw_packets = self._get_forward_packets()
+        self._bw_packets = self._get_backward_packets()
+
+        self.active_timeout = active_timout
+        self.idle_timeout = idle_timeout
+        
+        self.label = label
         
         self.src_ip = packet.ip.src
         self.dst_ip = packet.ip.dst
@@ -19,21 +33,21 @@ class Flow:
         self.total_fwd_packets = 1
         self.total_bwd_packets = 0
 
-        self.flow_packet_size = PacketSize(self._get_all_packets())
-        self.fw_packet_size = PacketSize(self._get_forward_packets())
-        self.bw_packet_size = PacketSize(self._get_backward_packets())
+        self.flow_packet_size = PacketSize(self._all_packets)
+        self.fw_packet_size = PacketSize(self._fw_packets)
+        self.bw_packet_size = PacketSize(self._bw_packets)
 
         self.flow_byte_per_sec = 0
         self.flow_packet_per_sec = 0
 
-        self.flow_iat = IAT(self._get_all_packets())
-        self.fw_iat = IAT(self._get_forward_packets())
-        self.bw_iat = IAT(self._get_backward_packets())
+        self.flow_iat = IAT(self._all_packets)
+        self.fw_iat = IAT(self._fw_packets)
+        self.bw_iat = IAT(self._bw_packets)
 
-        self.flags = Flag(self._get_all_packets())
+        self.flags = Flag(self._all_packets)
 
-        self.fw_header = Header(self._get_all_packets())
-        self.bw_header = Header(self._get_all_packets())
+        self.fw_header = Header(self._all_packets)
+        self.bw_header = Header(self._all_packets)
 
         self.forward_packet_per_sec = 0
         self.backward_packet_per_sec = 0
@@ -42,6 +56,22 @@ class Flow:
         self.fw_seg_avg = 0
         self.bw_seg_avg = 0
 
+        self.fw_bulk = Bulk(self._fw_packets)
+        self.bw_bulk = Bulk(self._bw_packets)
+
+        self.fw_subflow = Subflow(self._fw_packets)
+        self.bw_subflow = Subflow(self._bw_packets)
+
+        self.fw_window = Window(self._fw_packets)
+        self.bw_window = Window(self._bw_packets)
+
+        self.fw_active_packet = 0
+
+        self.fw_seg_min = None
+
+        self.active = Active(self._all_packets, active_timout)
+        self.idle = Idle(self._all_packets, idle_timeout)
+
     def _get_all_packets(self):
         return [packet[0] for packet in self.packets]
 
@@ -49,8 +79,36 @@ class Flow:
         return [packet[0] for packet in self.packets if packet[1] == "FWD"]
 
     def _get_backward_packets(self):
-        return [packet[0] for packet in self.packets if packet[1] == "BWD"]   
-    
+        return [packet[0] for packet in self.packets if packet[1] == "BWD"]
+
+    def _is_active_packet(self, packet):
+        if not hasattr(packet, "tcp") or not hasattr(packet, "ip"):
+            return False
+
+        try:
+            ip_hdr_len = int(packet.ip.hdr_len) * 4
+            tcp_hdr_len = int(packet.tcp.hdr_len) * 4
+            total_len = int(packet.length)
+
+            payload_len = total_len - ip_hdr_len - tcp_hdr_len
+
+            return payload_len > 0
+
+        except Exception:
+            return False
+
+    def _get_payload_len(self, packet):
+        if not hasattr(packet, "tcp") or not hasattr(packet, "ip"):
+            return 0
+
+        try:
+            ip_hdr = int(packet.ip.hdr_len) * 4
+            tcp_hdr = int(packet.tcp.hdr_len) * 4
+            total_len = int(packet.length)
+            return max(0, total_len - ip_hdr - tcp_hdr)
+        except Exception:
+            return 0
+
     def update_flow(self, packet):
         self.end_time = float(packet.sniff_timestamp)
         self.flow_duration = self.end_time - self.start_time
@@ -58,20 +116,39 @@ class Flow:
         if packet.ip.src == self.src_ip and packet.ip.dst == self.dst_ip:
             self.total_fwd_packets += 1
             self.packets.append((packet, "FWD"))
+
+            if self._is_active_packet(packet):
+                self.fw_active_packet += 1
+
+            payload_len = self._get_payload_len(packet)
+
+            if payload_len > 0:
+                if self.fw_seg_min is None or payload_len < self.fw_seg_min:
+                    self.fw_seg_min = payload_len
         else:
             self.total_bwd_packets += 1
             self.packets.append((packet, "BWD"))
 
     def get_feature(self):
-        self.fw_packet_size.update_packets(self._get_forward_packets())
-        self.bw_packet_size.update_packets(self._get_backward_packets())
-        self.flow_iat.update_packets(self._get_all_packets())
-        self.fw_iat.update_packets(self._get_forward_packets())
-        self.bw_iat.update_packets(self._get_backward_packets())
-        self.flags.update(self._get_all_packets())
-        self.fw_header.update(self._get_forward_packets())
-        self.bw_header.update(self._get_backward_packets())
-        self.flow_packet_size.update_packets(self._get_all_packets())
+        self._all_packets = self._get_all_packets()
+        self._fw_packets = self._get_forward_packets()
+        self._bw_packets = self._get_backward_packets()
+
+        self.fw_packet_size.update_packets(self._fw_packets)
+        self.bw_packet_size.update_packets(self._bw_packets)
+        self.flow_iat.update_packets(self._all_packets)
+        self.fw_iat.update_packets(self._fw_packets)
+        self.bw_iat.update_packets(self._bw_packets)
+        self.flags.update(self._all_packets)
+        self.fw_header.update(self._fw_packets)
+        self.bw_header.update(self._bw_packets)
+        self.flow_packet_size.update_packets(self._all_packets)
+        self.fw_bulk.update(self._fw_packets)
+        self.bw_bulk.update(self._bw_packets)
+        self.fw_window.update(self._fw_packets)
+        self.bw_window.update(self._bw_packets)
+        self.active.update(self._all_packets)
+        self.idle.update(self._all_packets)
 
         self.fw_packet_size.calculate()
         self.bw_packet_size.calculate()
@@ -82,6 +159,9 @@ class Flow:
         self.fw_header.calculate()
         self.bw_header.calculate()
         self.flow_packet_size.calculate()
+        self.fw_bulk.calculate(self.flow_duration)
+        self.bw_bulk.calculate(self.flow_duration)
+        self.active.calculate()
 
         self.flow_duration = self.end_time - self.start_time
 
@@ -93,7 +173,6 @@ class Flow:
             self.down_up_ratio = self.total_bwd_packets / self.total_fwd_packets
         
         self.fw_seg_avg = self.fw_packet_size.total_size_pkt / self.total_fwd_packets if self.total_fwd_packets != 0 else 0
-
         self.bw_seg_avg = self.bw_packet_size.total_size_pkt / self.total_bwd_packets if self.total_bwd_packets != 0 else 0
 
         return {
@@ -157,5 +236,28 @@ class Flow:
             "down_up_ratio": self.down_up_ratio,
             "pkt_size_avr": self.flow_packet_size.avg_size_pkt,
             "fw_seg_avg": self.fw_seg_avg,
-            "bw_seg_avg": self.bw_seg_avg
+            "bw_seg_avg": self.bw_seg_avg,
+            "fw_byt_blk_avg": self.fw_bulk.bytes_avg,
+            "fw_pkt_blk_avg": self.fw_bulk.pkt_avg,
+            "fw_blk_rate_avg": self.fw_bulk.rate_avg,
+            "bw_byt_blk_avg": self.bw_bulk.bytes_avg,
+            "bw_pkt_blk_avg": self.bw_bulk.pkt_avg,
+            "bw_blk_rate_avg": self.bw_bulk.rate_avg,
+            "subfl_fw_pk": self.fw_subflow.packets_avg,
+            "subfl_fw_byt": self.fw_subflow.bytes_avg,
+            "subfl_bw_pk": self.bw_subflow.packets_avg,
+            "subfl_bw_byt": self.bw_subflow.bytes_avg,
+            "fw_win_byt": self.fw_window.get_initial_window_byte(),
+            "bw_win_byt": self.bw_window.get_initial_window_byte(),
+            "Fw_act_pkt": self.fw_active_packet,
+            "fw_seg_min": self.fw_seg_min,
+            "atv_avg": self.active.avg,
+            "atv_std": self.active.std,
+            "atv_max": self.active.max,
+            "atv_min": self.active.min,
+            "idl_avg": self.idle.avg,
+            "idl_std": self.idle.std,
+            "idl_max": self.idle.max,
+            "idl_min": self.idle.min,
+            "label": self.label,
         }

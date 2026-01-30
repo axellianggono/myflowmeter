@@ -2,11 +2,11 @@ import pyshark
 from src.flow_session import FlowSession
 
 class Extract:
-    def __init__(self, idle_time, active_time):
+    def __init__(self, idle_time, active_time, label):
         self.idle_time = idle_time
         self.active_time = active_time
 
-        self.flow_session = FlowSession(idle_time, active_time)
+        self.flow_session = FlowSession(idle_time, active_time, label)
 
     def process_file(self, filename):
         with pyshark.FileCapture(filename) as capture:
