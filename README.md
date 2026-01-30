@@ -19,9 +19,10 @@ python main.py --source example.pcap --output example.log
 
 Generated Features
 ------------------
-+-------------------+---------------------------------------------------------------+
+
+
 | Feature Name      | Description                                                   |
-+-------------------+---------------------------------------------------------------+
+|-------------------|---------------------------------------------------------------|
 | fl_dur            | Flow duration                                                 |
 | tot_fw_pk         | Total packets in the forward direction                        |
 | tot_bw_pk         | Total packets in the backward direction                       |
@@ -97,7 +98,6 @@ Generated Features
 | idl_std           | Standard deviation of idle time                               |
 | idl_max           | Maximum idle time                                             |
 | idl_min           | Minimum idle time                                             |
-+-------------------+---------------------------------------------------------------+
 
 
 References
