@@ -36,9 +36,10 @@ def main():
 
     parser = argparse.ArgumentParser(prog="MyFlowMeter")
 
-    parser.add_argument("-s", "--source", type=str, required=True, help="Source filename")
+    parser.add_argument("-s", "--source", type=str, help="Source filename")
     parser.add_argument("-o", "--output", type=str, required=True, help="Output filename")
     parser.add_argument("-l", "--label", type=str, required=True, help="Label of extracted flow")
+    parser.add_argument("-i", "--interface", type=str, help="Source interface")
 
     parser.add_argument("--idle-time", type=int, help="Idle time threshold (seconds)")
     parser.add_argument("--active-time", type=int, help="Active time threshold (seconds)")
@@ -50,16 +51,22 @@ def main():
 
     if args.active_time is not None:
         active_time = args.active_time
-    
+
+    if args.interface is not None:
+        interface = args.interface
+
     label = "Normal"
 
     if args.label is not None:
         label = args.label
 
     extractor = Extract(idle_time=idle_time, active_time=active_time, label=label)
-    extractor.process_file(args.source)
-    extractor.write_to_file(args.output)
-
+    
+    if args.source is not None:
+        extractor.process_file(args.source)
+        extractor.write_to_file(args.output)
+    else:
+        extractor.process_live(interface=interface, filename=args.output)
 
 if __name__ == "__main__":
     main()
