@@ -9,6 +9,14 @@ The main goal of this project is educational and research-oriented, focusing on
 understanding how CICFlowMeter-style features are derived algorithmically and
 implemented in practice using Python and PyShark.
 
+Set Up
+------
+* Create python virtual environment
+* Install depedencies
+```bash
+pip install -r requirements.txt
+```
+
 Quick Start
 -----------
 * Capture a pcap file
