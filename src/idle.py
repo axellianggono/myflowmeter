@@ -1,6 +1,11 @@
 import math
 
 class Idle:
+    """
+    Idle period tracking - tracks periods when IAT exceeds idle_time threshold.
+    Online incremental version using Welford's algorithm.
+    """
+    
     def __init__(self, packets, idle_time):
         self.packets = packets
         self.idle_time = idle_time
@@ -9,62 +14,48 @@ class Idle:
         self.std = 0
         self.max = 0
         self.min = 0
+        
+        # Incremental tracking
+        self._last_timestamp = None
+        
+        # Welford's algorithm for idle duration statistics
+        self._idle_count = 0
+        self._m2 = 0
 
-    def update(self, packets):
-        self.packets = packets
-
-    def _get_time(self, pkt):
-        packet = pkt[0]
-        if hasattr(packet, "sniff_timestamp"):
-            return float(packet.sniff_timestamp)
-        elif hasattr(packet, "frame_info"):
-            return float(packet.frame_info.time_epoch)
-        else:
-            return None
-
-    def calculate(self):
-        if len(self.packets) < 2:
-            self.avg = self.std = self.max = self.min = 0
+    def add_packet_incremental(self, timestamp):
+        """Incrementally track idle periods"""
+        timestamp = float(timestamp)
+        
+        if self._last_timestamp is None:
+            self._last_timestamp = timestamp
             return
+        
+        iat = timestamp - self._last_timestamp
+        
+        if iat > self.idle_time:
+            # This is an idle period
+            self._idle_count += 1
+            
+            # Update min/max
+            if self._idle_count == 1:
+                self.min = iat
+                self.max = iat
+            else:
+                self.min = min(self.min, iat)
+                self.max = max(self.max, iat)
+            
+            # Welford's algorithm for mean and variance
+            delta = iat - self.avg
+            self.avg += delta / self._idle_count
+            delta2 = iat - self.avg
+            self._m2 += delta * delta2
+            
+            # Update std
+            if self._idle_count > 1:
+                variance = self._m2 / self._idle_count
+                self.std = math.sqrt(variance)
+            else:
+                self.std = 0
+        
+        self._last_timestamp = timestamp
 
-        packets_sorted = sorted(
-            self.packets,
-            key=lambda pkt: self._get_time(pkt) or 0
-        )
-
-        idle_durations = []
-
-        last_time = None
-
-        for pkt in packets_sorted:
-            t = self._get_time(pkt)
-            if t is None:
-                continue
-
-            if last_time is None:
-                last_time = t
-                continue
-
-            iat = t - last_time
-
-            if iat > self.idle_time:
-                idle_durations.append(iat)
-
-            last_time = t
-
-        if len(idle_durations) == 0:
-            self.avg = self.std = self.max = self.min = 0
-            return
-
-        self.avg = sum(idle_durations) / len(idle_durations)
-        self.max = max(idle_durations)
-        self.min = min(idle_durations)
-
-        if len(idle_durations) > 1:
-            mean = self.avg
-            self.std = math.sqrt(
-                sum((x - mean) ** 2 for x in idle_durations)
-                / len(idle_durations)
-            )
-        else:
-            self.std = 0

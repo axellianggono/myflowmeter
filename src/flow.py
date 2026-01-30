@@ -12,9 +12,10 @@ class Flow:
     def __init__(self, packet, active_timout, idle_timeout, label):
         self.packets = [(packet, "FWD")]
 
-        self._all_packets = self._get_all_packets()
-        self._fw_packets = self._get_forward_packets()
-        self._bw_packets = self._get_backward_packets()
+        # Cache filtered packet lists to avoid repeated filtering
+        self._all_packets = [packet]
+        self._fw_packets = [packet]
+        self._bw_packets = []
 
         self.active_timeout = active_timout
         self.idle_timeout = idle_timeout
@@ -72,14 +73,7 @@ class Flow:
         self.active = Active(self._all_packets, active_timout)
         self.idle = Idle(self._all_packets, idle_timeout)
 
-    def _get_all_packets(self):
-        return [packet[0] for packet in self.packets]
 
-    def _get_forward_packets(self):
-        return [packet[0] for packet in self.packets if packet[1] == "FWD"]
-
-    def _get_backward_packets(self):
-        return [packet[0] for packet in self.packets if packet[1] == "BWD"]
 
     def _is_active_packet(self, packet):
         if not hasattr(packet, "tcp") or not hasattr(packet, "ip"):
@@ -110,58 +104,68 @@ class Flow:
             return 0
 
     def update_flow(self, packet):
+        """Update flow with new packet - fully incremental statistics update"""
         self.end_time = float(packet.sniff_timestamp)
         self.flow_duration = self.end_time - self.start_time
+        packet_timestamp = float(packet.sniff_timestamp)
+        packet_size = int(packet.length)
+
+        # Update cached packet lists
+        self._all_packets.append(packet)
+        
+        # Incremental updates for ALL flow statistics
+        self.flow_packet_size.add_packet_incremental(packet_size)
+        self.flow_iat.add_packet_incremental(packet_timestamp)
+        self.flags.add_packet_incremental(packet)
+        self.active.add_packet_incremental(packet_timestamp)
+        self.idle.add_packet_incremental(packet_timestamp)
 
         if packet.ip.src == self.src_ip and packet.ip.dst == self.dst_ip:
+            # Forward direction
             self.total_fwd_packets += 1
             self.packets.append((packet, "FWD"))
+            self._fw_packets.append(packet)
+            
+            # Incremental updates for forward direction
+            self.fw_packet_size.add_packet_incremental(packet_size)
+            self.fw_iat.add_packet_incremental(packet_timestamp)
+            self.fw_header.add_packet_incremental(packet)
+            self.fw_window.add_packet_incremental(packet)
+            self.fw_subflow.add_packet_incremental(packet_timestamp, packet_size)
+            self.fw_bulk.add_packet_incremental(packet_timestamp, packet_size)
 
             if self._is_active_packet(packet):
                 self.fw_active_packet += 1
 
             payload_len = self._get_payload_len(packet)
-
             if payload_len > 0:
                 if self.fw_seg_min is None or payload_len < self.fw_seg_min:
                     self.fw_seg_min = payload_len
         else:
+            # Backward direction
             self.total_bwd_packets += 1
             self.packets.append((packet, "BWD"))
+            self._bw_packets.append(packet)
+            
+            # Incremental updates for backward direction
+            self.bw_packet_size.add_packet_incremental(packet_size)
+            self.bw_iat.add_packet_incremental(packet_timestamp)
+            self.bw_header.add_packet_incremental(packet)
+            self.bw_window.add_packet_incremental(packet)
+            self.bw_subflow.add_packet_incremental(packet_timestamp, packet_size)
+            self.bw_bulk.add_packet_incremental(packet_timestamp, packet_size)
 
     def get_feature(self):
-        self._all_packets = self._get_all_packets()
-        self._fw_packets = self._get_forward_packets()
-        self._bw_packets = self._get_backward_packets()
-
-        self.fw_packet_size.update_packets(self._fw_packets)
-        self.bw_packet_size.update_packets(self._bw_packets)
-        self.flow_iat.update_packets(self._all_packets)
-        self.fw_iat.update_packets(self._fw_packets)
-        self.bw_iat.update_packets(self._bw_packets)
-        self.flags.update(self._all_packets)
-        self.fw_header.update(self._fw_packets)
-        self.bw_header.update(self._bw_packets)
-        self.flow_packet_size.update_packets(self._all_packets)
-        self.fw_bulk.update(self._fw_packets)
-        self.bw_bulk.update(self._bw_packets)
-        self.fw_window.update(self._fw_packets)
-        self.bw_window.update(self._bw_packets)
-        self.active.update(self._all_packets)
-        self.idle.update(self._all_packets)
-
-        self.fw_packet_size.calculate()
-        self.bw_packet_size.calculate()
-        self.flow_iat.calculate()
-        self.fw_iat.calculate()
-        self.bw_iat.calculate()
-        self.flags.calculate()
-        self.fw_header.calculate()
-        self.bw_header.calculate()
-        self.flow_packet_size.calculate()
-        self.fw_bulk.calculate(self.flow_duration)
-        self.bw_bulk.calculate(self.flow_duration)
-        self.active.calculate()
+        """Generate feature dictionary - all statistics computed incrementally!"""
+        # Finalize components that need end-of-flow calculations
+        self.fw_subflow.finalize()
+        self.bw_subflow.finalize()
+        self.fw_bulk.finalize(self.flow_duration)
+        self.bw_bulk.finalize(self.flow_duration)
+        self.active.finalize()
+        
+        # All other statistics already up-to-date from incremental updates!
+        # Only compute derived values that depend on multiple components
 
         self.flow_duration = self.end_time - self.start_time
 

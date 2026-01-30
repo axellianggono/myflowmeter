@@ -8,36 +8,45 @@ class IAT:
         self.max = 0
         self.avg = 0
         self.std = 0
+        
+        # Incremental IAT tracking
+        self._last_timestamp = None
+        self._count = 0
+        self._m2 = 0
 
-    def update_packets(self, packets):
-        self.packets = packets
-
-    def calculate(self):
-        n = len(self.packets)
-
-        if n < 2:
-            self.min = 0
-            self.max = 0
-            self.avg = 0
-            self.std = 0
+    def add_packet_incremental(self, timestamp):
+        """Incrementally update IAT statistics with new packet timestamp"""
+        timestamp = float(timestamp)
+        
+        if self._last_timestamp is None:
+            self._last_timestamp = timestamp
             return
-
-        times = sorted([float(pkt.sniff_timestamp) for pkt in self.packets])
-
-        iats = [
-            times[i] - times[i - 1]
-            for i in range(1, len(times))
-        ]
-
-        self.total_time = sum(iats)
-        self.min = min(iats)
-        self.max = max(iats)
-        self.avg = sum(iats) / len(iats)
-
-        if len(iats) > 1:
-            variance = sum(
-                (iat - self.avg) ** 2 for iat in iats
-            ) / len(iats)
+        
+        # Calculate IAT from last packet
+        iat = timestamp - self._last_timestamp
+        self._last_timestamp = timestamp
+        
+        self._count += 1
+        self.total_time += iat
+        
+        # Update min/max
+        if self._count == 1:
+            self.min = iat
+            self.max = iat
+        else:
+            self.min = min(self.min, iat)
+            self.max = max(self.max, iat)
+        
+        # Welford's algorithm for running mean and variance
+        delta = iat - self.avg
+        self.avg += delta / self._count
+        delta2 = iat - self.avg
+        self._m2 += delta * delta2
+        
+        # Update std
+        if self._count > 1:
+            variance = self._m2 / self._count
             self.std = math.sqrt(variance)
         else:
             self.std = 0
+
