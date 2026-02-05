@@ -14,8 +14,12 @@ class Extract:
             for packet in capture:
                 if "IP" not in packet:
                     continue
+                if packet.transport_layer not in ("TCP", "UDP"):
+                    continue
                 self.flow_session.process_packet(packet)
             
+            self.flow_session._close_all_flow()
+
         print(f"[*] Finished Processing {filename}")
     
     def _get_available_interfaces(self):
@@ -36,6 +40,8 @@ class Extract:
                 
                 for packet in capture.sniff_continuously():
                     if "IP" not in packet:
+                        continue
+                    if packet.transport_layer not in ("TCP", "UDP"):
                         continue
                     
                     invalidated_flow = self.flow_session.process_packet(packet)
@@ -59,13 +65,21 @@ class Extract:
                 for flow in self.flow_session.get_all_flow():
                     f.write(str(flow.get_feature()) + "\n")
 
-
     def write_to_file(self, filename):
         flows = self.flow_session.get_all_flow()
 
+        is_csv = filename.endswith(".csv")
+
         with open(filename, "w") as f:
+            if is_csv:
+                f.write(",".join(map(str, flows[0].get_feature().keys())) + "\n")
+
             for flow in flows:
-                f.write(str(flow.get_feature()) + "\n")
+                feature = flow.get_feature()
+                if is_csv:
+                    f.write(",".join(map(str, feature.values())) + "\n")
+                else:
+                    f.write(str(feature) + "\n")
             
         print(f"[*] Saved to {filename}")
 

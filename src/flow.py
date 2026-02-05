@@ -1,12 +1,12 @@
-from src.packet_size import PacketSize
-from src.iat import IAT
-from src.flag import Flag
-from src.header import Header
-from src.bulk import Bulk
-from src.subflow import Subflow
-from src.window import Window
-from src.active import Active
-from src.idle import Idle
+from src.features.packet_size import PacketSize
+from src.features.iat import IAT
+from src.features.flag import Flag
+from src.features.header import Header
+from src.features.bulk import Bulk
+from src.features.subflow import Subflow
+from src.features.window import Window
+from src.features.active import Active
+from src.features.idle import Idle
 
 class Flow:
     def __init__(self, packet, active_timout, idle_timeout, label):
@@ -178,6 +178,9 @@ class Flow:
         
         self.fw_seg_avg = self.fw_packet_size.total_size_pkt / self.total_fwd_packets if self.total_fwd_packets != 0 else 0
         self.bw_seg_avg = self.bw_packet_size.total_size_pkt / self.total_bwd_packets if self.total_bwd_packets != 0 else 0
+
+        if self.fw_seg_min is None:
+            self.fw_seg_min = 0
 
         return {
             "src_ip": self.src_ip,

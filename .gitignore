@@ -6,3 +6,6 @@ venv/
 
 capture/
 .vscode/
+
+extracted/
+raw_data/
